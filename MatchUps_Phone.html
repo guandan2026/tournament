@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>对阵信息（手机友好版）</title>
+  <!-- 允许手机缩放查看 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
+  <style>
+    :root{
+      --duration-sec: 180s;   /* 根据行数会被脚本重设 */
+      --font-base: clamp(14px, 3.5vw, 18px);
+      --font-header: clamp(16px, 4vw, 20px);
+      --row-pad: 8px;
+      --banner-h: 64px;
+      --viewport-h: 60vh;     /* 手机上用视口高度，便于放大缩小 */
+    }
+    body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:10px; }
+    #banner { display:block; margin:0 auto 6px; max-width:100%; height:var(--banner-h); object-fit:contain; }
+    h1 { text-align:center; color:#00ffcc; font-size:var(--font-header); margin:6px 0 10px; }
+
+    .status { position:fixed; top:8px; right:8px; display:flex; gap:6px; align-items:center; font-size:.85em; z-index:5; }
+    .dot { width:8px; height:8px; border-radius:50%; background:#555; }
+    .dot.ok { background:#22c55e; } .dot.err { background:#ef4444; }
+    .status small { opacity:.85 }
+
+    .controls { display:flex; justify-content:center; gap:8px; margin:8px 0; }
+    .btn { padding:6px 14px; font-size:1em; color:#fff; border:none; border-radius:4px; cursor:pointer; }
+    #scroll-toggle{ background:#2563eb; }
+
+    /* 固定表头 */
+    .fixed-header table{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:var(--font-base); }
+    .fixed-header th{ padding:8px; background:#1c1c1c; border-bottom:2px solid #00ffcc; text-align:center;
+                      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    /* 滚动视窗 */
+    .scroll-viewport{ height:var(--viewport-h); overflow:hidden; position:relative; }
+    .scroller{
+      position:absolute; left:0; right:0; top:0; will-change:transform;
+      animation: scrollUp var(--duration-sec) linear infinite;
+      animation-play-state: paused; /* 首屏静止，稍后启动 */
+    }
+    @keyframes scrollUp { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+
+    table.live{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:var(--font-base); }
+    td{ padding:var(--row-pad); text-align:center; border-bottom:1px solid #2a2a2a;
+        white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    tr:nth-child(even){ background:#101010; } tr:nth-child(odd){ background:#070707; }
+
+    .toolbar{ text-align:center; font-size:.9em; opacity:.85; margin-top:6px; }
+  </style>
+</head>
+<body>
+  <div class="status"><div id="netDot" class="dot"></div><small id="statusText">连接中…</small></div>
+
+  <img id="banner" src="banner.png" alt="Banner" />
+  <h1 id="roundTitle">加载中…</h1>
+
+  <!-- 固定表头：加 colgroup 设定 6 列比例 -->
+  <div class="fixed-header">
+    <table>
+      <colgroup>
+        <col style="width:10%">
+        <col style="width:10%">
+        <col style="width:30%">
+        <col style="width:10%">
+        <col style="width:10%">
+        <col style="width:30%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>桌号</th>
+          <th>东/西 ID</th>
+          <th>东/西 姓名</th>
+          <th>VS</th>
+          <th>南/北 ID</th>
+          <th>南/北 姓名</th>
+        </tr>
+      </thead>
+    </table>
+  </div>
+
+  <!-- 滚动主体：A/B 两份内容；也加同样的 colgroup，保证对齐 -->
+  <div class="scroll-viewport">
+    <div id="scroller" class="scroller">
+      <table class="live">
+        <colgroup>
+          <col style="width:10%">
+          <col style="width:10%">
+          <col style="width:30%">
+          <col style="width:10%">
+          <col style="width:10%">
+          <col style="width:30%">
+        </colgroup>
+        <tbody id="tbodyA"></tbody>
+      </table>
+      <table class="live">
+        <colgroup>
+          <col style="width:10%">
+          <col style="width:10%">
+          <col style="width:30%">
+          <col style="width:10%">
+          <col style="width:10%">
+          <col style="width:30%">
+        </colgroup>
+        <tbody id="tbodyB"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="scroll-toggle" class="btn">⏸ 暂停</button>
+  </div>
+
+  <div class="toolbar">
+    <span id="lastUpdate">上次更新：—</span>
+  </div>
+
+  <script>
+    /* ===== API ===== */
+    const MATCHUPS_API = "https://script.google.com/macros/s/AKfycby2yc88MjmKxpnXxmuefWjQt7QTuHZxKei5bBcIDS205SXIOchbTXbvyxcviq6Opk4/exec";
+
+    /* ===== 参数 ===== */
+    const POLL_MS = 10000;
+    const PER_ROW_SEC = 0.8;
+    const MIN_DURATION = 30;
+    const MAX_DURATION = 300;
+    const FIRST_SCREEN_MS = 800;
+
+    /* 列索引（从 0 开始，对应 A C D (VS) G H） */
+    const COL_INDEX = { table:0, p1Id:2, p1Nm:3, p2Id:6, p2Nm:7 };
+
+    /* ===== DOM ===== */
+    const url = new URL(location.href);
+    const roundParamStr = url.searchParams.get("round");
+    const roundParam = (roundParamStr && roundParamStr.trim() !== "") ? Number(roundParamStr) : NaN;
+    let roundFromHeader = NaN;
+
+    const netDot = document.getElementById("netDot");
+    const statusText = document.getElementById("statusText");
+    const lastUpdateEl = document.getElementById("lastUpdate");
+    const tbodyA = document.getElementById("tbodyA");
+    const tbodyB = document.getElementById("tbodyB");
+    const roundTitle = document.getElementById("roundTitle");
+    const scroller = document.getElementById("scroller");
+    const viewport = document.querySelector(".scroll-viewport");
+    const scrollBtn = document.getElementById("scroll-toggle");
+
+    let started = false;
+    let pollTimer = null;
+    let autoStartTimer = null;
+    let displayPaused = false;
+
+    const trim = v => (v==null ? "" : String(v).trim());
+    function setNet(ok,msg){ netDot.className="dot "+(ok?"ok":"err"); statusText.textContent=msg||(ok?"在线":"重试中…"); }
+    function ts(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
+
+    async function fetchJSON(u, tries=3, baseDelay=1200){
+      for(let i=0;i<tries;i++){
+        try{
+          const r = await fetch(u, {cache:"no-store"});
+          if(!r.ok) throw new Error(String(r.status));
+          setNet(true,"在线");
+          return await r.json();
+        }catch(e){
+          setNet(false,`重试 ${i+1}/${tries}`);
+          if(i===tries-1) throw e;
+          await new Promise(res=>setTimeout(res, baseDelay*(i+1)));
+        }
+      }
+    }
+
+    /* 解析：剔除起始全空行；rows[0]=表头，rows[1..]=数据 */
+    function parsePayload(payload){
+      let rows = [];
+      if (payload && Array.isArray(payload.rows)) rows = payload.rows;
+      else if (payload && Array.isArray(payload.data)) rows = payload.data;
+      else if (Array.isArray(payload)) rows = payload;
+      else if (payload && Array.isArray(payload.table)) rows = payload.table;
+      else rows = [];
+      rows = rows.map(r => (Array.isArray(r) ? r.map(trim) : []));
+      while (rows.length && rows[0].every(c => c === "")) rows.shift();
+      if (!rows.length) return { header:[], rows:[] };
+      return { header: rows[0], rows: rows.slice(1) };
+    }
+
+    function extractRoundFromHeader(headerCells){
+      for (const h of headerCells){
+        const s = trim(h).replace(/\s+/g,'');
+        if (!s) continue;
+        let m = s.match(/^第(\d+)轮$/);                           if (m) return Number(m[1]);
+        m = s.match(/(?:^|[^A-Za-z])Round(\d+)(?:[^A-Za-z]|$)/i); if (m) return Number(m[1]);
+        m = s.match(/^R(\d+)$/i);                                 if (m) return Number(m[1]);
+      }
+      return NaN;
+    }
+
+    function updateTitle(){
+      const useRound =
+        (Number.isFinite(roundParam) && roundParam > 0) ? roundParam :
+        (Number.isFinite(roundFromHeader) && roundFromHeader > 0) ? roundFromHeader :
+        null;
+      roundTitle.textContent = (useRound != null)
+        ? `第 ${useRound} 轮对阵信息（手机）`
+        : `对阵信息（手机）`;
+    }
+
+    function parseTableNo(row){
+      const raw = (row[COL_INDEX.table] ?? "").toString();
+      const num = Number(raw.replace(/[^\d.-]/g,''));
+      return Number.isFinite(num) ? num : raw;
+    }
+
+    function buildRow(row){
+      const tr = document.createElement("tr");
+      const id = [
+        row[COL_INDEX.table], row[COL_INDEX.p1Id], row[COL_INDEX.p1Nm],
+        row[COL_INDEX.p2Id], row[COL_INDEX.p2Nm]
+      ].map(v=>trim(v)).join("|") || `${Date.now()}-${Math.random()}`;
+      tr.dataset.id = id;
+
+      const cells = [
+        row[COL_INDEX.table],
+        row[COL_INDEX.p1Id],
+        row[COL_INDEX.p1Nm],
+        "VS",
+        row[COL_INDEX.p2Id],
+        row[COL_INDEX.p2Nm]
+      ];
+      cells.forEach((v, idx)=>{
+        const td = document.createElement("td");
+        td.textContent = (v==null || v==="") ? "—" : String(v);
+        td.dataset.col = String(idx);
+        tr.appendChild(td);
+      });
+      return tr;
+    }
+
+    function ensureFillAndMirror(){
+      const needH = viewport.clientHeight;
+      let guard = 0;
+      while (tbodyA.offsetHeight < needH && guard < 8) {
+        const snapshot = Array.from(tbodyA.children);
+        snapshot.forEach(tr => tbodyA.appendChild(tr.cloneNode(true)));
+        guard++;
+      }
+      tbodyB.innerHTML = "";
+      Array.from(tbodyA.children).forEach(tr => tbodyB.appendChild(tr.cloneNode(true)));
+    }
+
+    function initialRender(header, rows){
+      roundFromHeader = extractRoundFromHeader(header);
+      updateTitle();
+
+      rows.sort((a,b)=>{
+        const A = parseTableNo(a), B = parseTableNo(b);
+        if (typeof A === 'number' && typeof B === 'number') return A - B;
+        return String(A).localeCompare(String(B));
+      });
+
+      tbodyA.innerHTML = ""; tbodyB.innerHTML = "";
+      rows.forEach(r => tbodyA.appendChild(buildRow(r)));
+      ensureFillAndMirror();
+
+      const doubled = Math.max(1, rows.length * 2);
+      const durationSec = Math.min(MAX_DURATION, Math.max(MIN_DURATION, Math.round(doubled * PER_ROW_SEC)));
+      scroller.style.setProperty('--duration-sec', durationSec + 's');
+
+      scroller.style.transform = 'translateY(0)';
+      scroller.style.animationPlayState = 'paused';
+      autoStartTimer = setTimeout(()=>{ if (!displayPaused) scroller.style.animationPlayState = 'running'; }, FIRST_SCREEN_MS);
+
+      started = true;
+      lastUpdateEl.textContent = `上次更新：${ts()}`;
+    }
+
+    function patchRows(header, rows){
+      roundFromHeader = extractRoundFromHeader(header);
+      updateTitle();
+
+      rows.sort((a,b)=>{
+        const A = parseTableNo(a), B = parseTableNo(b);
+        if (typeof A === 'number' && typeof B === 'number') return A - B;
+        return String(A).localeCompare(String(B));
+      });
+
+      rows.forEach(r=>{
+        const id = [
+          r[COL_INDEX.table], r[COL_INDEX.p1Id], r[COL_INDEX.p1Nm],
+          r[COL_INDEX.p2Id], r[COL_INDEX.p2Nm]
+        ].map(v=>trim(v)).join("|");
+
+        const vals = [
+          r[COL_INDEX.table],
+          r[COL_INDEX.p1Id],
+          r[COL_INDEX.p1Nm],
+          "VS",
+          r[COL_INDEX.p2Id],
+          r[COL_INDEX.p2Nm]
+        ].map(v => (v==null || v==="") ? "—" : String(v));
+
+        document.querySelectorAll(`tr[data-id="${CSS.escape(id)}"]`).forEach(tr=>{
+          vals.forEach((nv, i)=>{
+            const td = tr.querySelector(`td[data-col="${i}"]`);
+            if (td && td.textContent !== nv) td.textContent = nv;
+          });
+        });
+      });
+
+      lastUpdateEl.textContent = `上次更新：${ts()}`;
+    }
+
+    async function loadAndPatch(){
+      const payload = await fetchJSON(MATCHUPS_API);
+      const parsed  = parsePayload(payload);
+      if (!started) initialRender(parsed.header, parsed.rows);
+      else          patchRows(parsed.header, parsed.rows);
+    }
+
+    function startPolling(){
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async ()=>{
+        try{ await loadAndPatch(); setNet(true,"在线"); }
+        catch(e){ setNet(false,"重试中…"); }
+      }, POLL_MS);
+    }
+    function stopPolling(){ if (pollTimer){ clearInterval(pollTimer); pollTimer = null; } }
+
+    // 显示开关：暂停/恢复（滚动 & 轮询）
+    function setDisplayPaused(pause){
+      displayPaused = pause;
+      if (autoStartTimer){ clearTimeout(autoStartTimer); autoStartTimer = null; }
+      scroller.style.animationPlayState = pause ? 'paused' : 'running';
+      if (pause) stopPolling(); else { startPolling(); loadAndPatch().catch(()=>{}); }
+      scrollBtn.textContent = pause ? '▶️ 显示' : '⏸ 暂停';
+    }
+    function initScrollControl(){
+      scrollBtn.addEventListener('click', ()=> setDisplayPaused(!displayPaused));
+      window.addEventListener('keydown', (e)=>{
+        if (e.code === 'Space'){ e.preventDefault(); setDisplayPaused(!displayPaused); }
+      });
+    }
+
+    (async ()=>{
+      try{ await loadAndPatch(); setNet(true,"在线"); }
+      catch(e){ setNet(false,"初次加载失败"); }
+      initScrollControl();
+      startPolling();
+      autoStartTimer = setTimeout(()=>{ if (!displayPaused) scroller.style.animationPlayState = 'running'; }, FIRST_SCREEN_MS);
+    })();
+  </script>
+</body>
+</html>

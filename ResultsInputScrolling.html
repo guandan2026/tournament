@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>比赛结果展示（当前轮）</title>
+  <style>
+    :root { --duration-sec: 180s; }
+    body { font-family: Arial, sans-serif; background:#000; color:#fff; margin:0; padding:20px; }
+    #banner { display:block; margin:0 auto 6px; max-width:100%; height:100px; object-fit:contain; }
+    h1 { text-align:center; color:#00ffcc; font-size:2em; margin:6px 0 12px; }
+
+    .status { position:fixed; top:12px; right:12px; display:flex; gap:8px; align-items:center; font-size:.9em; }
+    .dot { width:10px; height:10px; border-radius:50%; background:#555; }
+    .dot.ok { background:#22c55e; }
+    .dot.err { background:#ef4444; }
+    .status small { opacity:.8 }
+
+    .fixed-header table{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:1.05em; }
+    .fixed-header th{ padding:8px; background:#222; border-bottom:2px solid #00ffcc; text-align:center; }
+
+    .scroll-viewport{ height:600px; overflow:hidden; position:relative; }
+    .scroller{
+      position:absolute; left:0; right:0; top:0; will-change:transform;
+      animation: scrollUp var(--duration-sec) linear infinite;
+      animation-play-state: paused; /* 初始暂停 */
+    }
+
+    @keyframes scrollUp { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+
+    table.live{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:1.05em; }
+    td{ padding:8px; text-align:center; border-bottom:1px solid #333; }
+    tr:nth-child(even){ background:#121212; } tr:nth-child(odd){ background:#0b0b0b; }
+
+    .controls { display:flex; justify-content:center; gap:10px; margin:14px 0 8px; }
+    .btn { padding:8px 20px; font-size:1em; color:#fff; border:none; border-radius:4px; cursor:pointer; }
+    #music-toggle{ background:#00aa88; }
+    #scroll-toggle{ background:#2563eb; }
+
+    .toolbar{ text-align:center; font-size:.95em; opacity:.85; }
+  </style>
+</head>
+<body>
+  <div class="status"><div id="netDot" class="dot"></div><small id="statusText">连接中…</small></div>
+
+  <img id="banner" src="banner.png" alt="Banner" />
+  <h1 id="roundTitle">加载中…</h1>
+
+  <div class="fixed-header">
+    <table><thead><tr id="theadRow"></tr></thead></table>
+  </div>
+
+  <div class="scroll-viewport">
+    <div id="scroller" class="scroller">
+      <table class="live"><tbody id="tbodyA"></tbody></table>
+      <table class="live"><tbody id="tbodyB"></tbody></table>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="music-toggle" class="btn">▶️ 播放音乐</button>
+    <button id="scroll-toggle" class="btn">⏸ 暂停</button>
+  </div>
+
+  <audio id="bgm" src="bgmusic.mp3" preload="auto" loop></audio>
+
+  <div class="toolbar">
+    <span id="lastUpdate">上次更新：—</span>
+  </div>
+
+  <script>
+    const PROD_API = "https://script.google.com/macros/s/AKfycbx8Xx9CGFVC7ShtBQ_tS8tmN9ipdxPQWouxro0cg16OZHVfjHdwxZvnZdPO2Z248Uc/exec";
+    const POLL_MS = 10000;
+    const PER_ROW_SEC = 0.8;
+    const MIN_DURATION = 30;
+    const MAX_DURATION = 300;
+
+    const url = new URL(location.href);
+    let round = Number(url.searchParams.get("round"));
+
+    const netDot = document.getElementById("netDot");
+    const statusText = document.getElementById("statusText");
+    const lastUpdateEl = document.getElementById("lastUpdate");
+    const theadRow = document.getElementById("theadRow");
+    const tbodyA = document.getElementById("tbodyA");
+    const tbodyB = document.getElementById("tbodyB");
+    const roundTitle = document.getElementById("roundTitle");
+    const scroller = document.getElementById("scroller");
+    const viewport = document.querySelector(".scroll-viewport");
+
+    const musicBtn = document.getElementById("music-toggle");
+    const scrollBtn = document.getElementById("scroll-toggle");
+
+    function setNet(ok,msg){ netDot.className="dot "+(ok?"ok":"err"); statusText.textContent=msg||(ok?"在线":"重试中…"); }
+    function ts(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
+
+    const headerMap = {
+      "Match_ID":"轮次-桌号","PlayerA_ID":"东西 ID","PlayerA_Name":"东西 姓名",
+      "PlayerB_ID":"南北 ID","PlayerB_Name":"南北 姓名","ScoreA":"东西方级数","ScoreB":"南北方级数"
+    };
+
+    let headerKeys = [];
+    let started = false;
+    let pollTimer = null;
+    let displayPaused = false;
+
+    async function fetchJSON(u, tries=3, baseDelay=1200){
+      for(let i=0;i<tries;i++){
+        try{
+          const r = await fetch(u, {cache:"no-store"});
+          if(!r.ok) throw new Error(String(r.status));
+          setNet(true,"在线");
+          return await r.json();
+        }catch(e){
+          setNet(false,`重试 ${i+1}/${tries}`);
+          if(i===tries-1) throw e;
+          await new Promise(res=>setTimeout(res, baseDelay*(i+1)));
+        }
+      }
+    }
+
+    function detectRoundFromMatchID(id){
+      if(typeof id!=="string") return null;
+      const m = id.match(/^R(\d+)_/);
+      return m ? Number(m[1]) : null;
+    }
+
+    function buildHeader(keys){
+      theadRow.innerHTML = "";
+      keys.forEach(k=>{
+        if(k==="Round") return;
+        const th = document.createElement("th");
+        th.textContent = headerMap[k] || k;
+        theadRow.appendChild(th);
+      });
+    }
+
+    function createRow(keys, row){
+      const tr = document.createElement("tr");
+      const id = String(row[0]);
+      tr.dataset.id = id;
+      keys.forEach((k,idx)=>{
+        if(k==="Round") return;
+        const td = document.createElement("td");
+        td.textContent = row[idx] ?? "—";
+        td.dataset.col = k;
+        tr.appendChild(td);
+      });
+      return tr;
+    }
+
+    function ensureFillAndMirror(){
+      const needH = viewport.clientHeight;
+      let guard = 0;
+      while (tbodyA.offsetHeight < needH && guard < 8) {
+        const snapshot = Array.from(tbodyA.children);
+        snapshot.forEach(tr => {
+          tbodyA.appendChild(tr.cloneNode(true));
+        });
+        guard++;
+      }
+      tbodyB.innerHTML = "";
+      Array.from(tbodyA.children).forEach(tr => tbodyB.appendChild(tr.cloneNode(true)));
+    }
+
+    function initialRender(keys, rows){
+      headerKeys = keys.slice();
+      buildHeader(headerKeys);
+      tbodyA.innerHTML = ""; tbodyB.innerHTML = "";
+      rows.forEach(r => tbodyA.appendChild(createRow(headerKeys, r)));
+      ensureFillAndMirror();
+      const doubled = Math.max(1, rows.length * 2);
+      const durationSec = Math.min(MAX_DURATION, Math.max(MIN_DURATION, Math.round(doubled * PER_ROW_SEC)));
+      scroller.style.setProperty('--duration-sec', durationSec + 's');
+      started = true;
+      lastUpdateEl.textContent = `上次更新：${ts()}`;
+    }
+
+    function patchRows(keys, rows){
+      const colIndex = Object.create(null);
+      keys.forEach((k,i)=> colIndex[k]=i);
+      rows.forEach(r=>{
+        const id = String(r[colIndex["Match_ID"] || 0]);
+        for(const k of keys){
+          if(k==="Round") continue;
+          const i = colIndex[k];
+          const newVal = String(r[i] ?? "—");
+          document.querySelectorAll(`tr[data-id="${id}"] td[data-col="${k}"]`).forEach(td=>{
+            if(td.textContent !== newVal) td.textContent = newVal;
+          });
+        }
+      });
+      lastUpdateEl.textContent = `上次更新：${ts()}`;
+    }
+
+    async function loadAndPatch(){
+      const data = await fetchJSON(PROD_API);
+      const header = data.header || [];
+      let rows = Array.isArray(data.rows) ? data.rows : [];
+      const rIdx = header.indexOf("Round");
+      if (!Number.isFinite(round) || round <= 0) {
+        const rounds = rows
+          .map(r => rIdx >= 0 ? Number(r[rIdx]) : detectRoundFromMatchID(String(r[0])))
+          .filter(n => Number.isFinite(n));
+        round = rounds.length ? Math.max(...rounds) : 1;
+        url.searchParams.set("round", String(round));
+        history.replaceState(null, "", url.toString());
+      }
+      rows = (rIdx >= 0)
+        ? rows.filter(r => Number(r[rIdx]) === round)
+        : rows.filter(r => detectRoundFromMatchID(String(r[0])) === round);
+      if(!started){
+        initialRender(header, rows);
+      }else{
+        patchRows(header, rows);
+      }
+      document.getElementById("roundTitle").textContent = `第 ${round} 轮比赛结果（Live）`;
+    }
+
+    function startPolling(){
+      if(pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async ()=>{
+        try{ await loadAndPatch(); setNet(true,"在线"); }
+        catch(e){ setNet(false,"重试中…"); }
+      }, POLL_MS);
+    }
+
+    function stopPolling(){
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    function setDisplayPaused(pause){
+      displayPaused = pause;
+      scroller.style.animationPlayState = pause ? 'paused' : 'running';
+      if (pause) stopPolling();
+      else { startPolling(); loadAndPatch().catch(()=>{}); }
+      scrollBtn.textContent = pause ? '▶️ 显示' : '⏸ 暂停';
+    }
+
+    function initScrollControl(){
+      scrollBtn.addEventListener('click', ()=> setDisplayPaused(!displayPaused));
+      window.addEventListener('keydown', (e)=>{
+        if (e.code === 'Space'){
+          e.preventDefault();
+          setDisplayPaused(!displayPaused);
+        }
+      });
+    }
+
+    window.addEventListener("DOMContentLoaded", ()=>{
+      const audio = document.getElementById("bgm");
+      const btn = document.getElementById("music-toggle");
+      const sync = ()=>{ btn.textContent = audio.paused ? "▶️ 播放音乐" : "⏸ 暂停音乐"; };
+      const kick = ()=> audio.play().then(sync).catch(()=>{});
+      document.body.addEventListener("click", kick, { once:true });
+      document.body.addEventListener("touchstart", kick, { once:true });
+      btn.addEventListener("click", async ()=>{
+        try{ if(audio.paused) await audio.play(); else audio.pause(); } finally { sync(); }
+      });
+      audio.addEventListener("playing", sync);
+      audio.addEventListener("pause",   sync);
+      sync();
+    });
+
+    (async ()=>{
+      try{ await loadAndPatch(); setNet(true,"在线"); }
+      catch(e){ setNet(false,"初次加载失败"); }
+      initScrollControl();
+      startPolling();
+      // 延迟 0.8s 启动滚动动画
+      setTimeout(()=> { if (!displayPaused) scroller.style.animationPlayState = 'running'; }, 800);
+    })();
+  </script>
+</body>
+</html>
