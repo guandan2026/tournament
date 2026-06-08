@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>第二届“高校杯”团体成绩展示</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+  <style>
+    :root{
+      --duration-sec: 160s;
+      --first-screen-ms: 900ms;
+      --per-row-sec: 0.8s;
+      --font-header: clamp(20px, 3.6vw, 32px);
+      --font-base: clamp(14px, 2.6vw, 18px);
+      --row-pad: 8px;
+      --banner-h: 120px;
+      --viewport-h: 600px;
+    }
+    *{box-sizing:border-box}
+    html{ touch-action:auto; }
+    body{
+      margin:0;
+      background:#000;
+      color:#fff;
+      font-family:Arial, sans-serif;
+      overflow-x:hidden;
+      -webkit-text-size-adjust:100%;
+    }
+    #banner{ display:block; margin:12px auto 6px; height:var(--banner-h); object-fit:contain; }
+    h1{ text-align:center; color:#00ffcc; font-size:var(--font-header); margin:6px 0 10px; text-shadow:0 4px 18px rgba(0,255,204,.25); }
+
+    /* 在线状态 */
+    .status{ position:fixed; top:10px; right:10px; display:flex; gap:8px; align-items:center; font-size:.9em; z-index:50; }
+    .dot{ width:8px; height:8px; border-radius:50%; background:#555; }
+    .dot.ok{ background:#22c55e; } .dot.err{ background:#ef4444; }
+    .status small{ opacity:.85 }
+
+    /* 固定表头（滚动模式） */
+    .fixed-header{ display:block; }
+    .fixed-header table{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:var(--font-base); }
+    .fixed-header th{
+      padding:var(--row-pad); background:#333; border-bottom:2px solid #00ffcc; text-align:center;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+
+    /* 滚动表 */
+    .scroll-viewport{
+      height:var(--viewport-h);
+      overflow:hidden;
+      position:relative;
+      cursor:pointer;
+    }
+    .scroller{
+      position:absolute; left:0; right:0; top:0;
+      will-change:transform;
+      animation: scrollUp var(--duration-sec) linear infinite;
+      animation-play-state: paused;
+    }
+    @keyframes scrollUp{ from{ transform:translateY(0); } to{ transform:translateY(-50%); } }
+    table.live{ width:100%; table-layout:fixed; border-collapse:collapse; font-size:var(--font-base); }
+    td{
+      padding:var(--row-pad); text-align:center; border-bottom:1px solid #444;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    tr:nth-child(even){ background:#222; } tr:nth-child(odd){ background:#111; }
+    .top-1{ background:#ffd700 !important; color:#111; font-weight:bold; }
+    .top-2{ background:#c0c0c0 !important; color:#111; font-weight:bold; }
+    .top-3{ background:#cd7f32 !important; color:#111; font-weight:bold; }
+
+    /* 底部固定控件 */
+    .controls{
+      position:fixed; left:0; right:0; bottom:10px; z-index:60;
+      display:flex; justify-content:center; gap:10px; padding:6px 10px;
+      pointer-events:auto;
+    }
+    .btn{ padding:8px 16px; font-size:clamp(14px, 2.4vw, 18px); color:#fff; border:none; border-radius:8px; background:#004a4a; cursor:pointer; }
+    .btn:hover{ filter:brightness(1.1); }
+    #scroll-toggle{ background:#2563eb; }
+    #music-toggle{ background:#0a6848; }
+
+    .toolbar{ text-align:center; font-size:.9em; opacity:.85; margin:8px 0 74px; } /* 给底部按钮留空间 */
+
+    /* —— 海报式前三名（放大+舞台特效） —— */
+    #posterWrap{ display:none; position:relative; }
+    #fxCanvas{
+      position:absolute; inset:0; pointer-events:none; z-index:5; opacity:.9;
+      mix-blend-mode:screen;
+    }
+    .poster{
+      max-width:min(1300px, 96vw);
+      margin:8px auto 18px; padding:22px 18px;
+      background:
+        radial-gradient(1200px 420px at 50% -80%, rgba(255,215,0,.20), rgba(0,0,0,0)),
+        linear-gradient(180deg, rgba(0,255,204,.06), rgba(0,0,0,0) 28%),
+        #0a0a0a;
+      border:1px solid #1f1f1f; border-radius:16px;
+      box-shadow:0 12px 32px rgba(0,0,0,.55), inset 0 0 40px rgba(0,255,204,.05);
+      position:relative; z-index:2;
+      animation: posterIn .8s ease both;
+    }
+    @keyframes posterIn{
+      from{ opacity:0; transform:translateY(12px) scale(.98); }
+      to  { opacity:1; transform:translateY(0)    scale(1); }
+    }
+    .poster-title{
+      text-align:center; font-size:clamp(24px, 4.5vw, 40px);
+      color:#84f2e3; margin-bottom:10px; letter-spacing:1px; font-weight:900;
+      text-shadow:0 0 18px rgba(0,255,204,.35), 0 0 4px rgba(0,255,204,.6);
+      position:relative;
+    }
+    .poster-title:after{
+      content:""; position:absolute; left:50%; bottom:-8px; width:220px; height:2px; transform:translateX(-50%);
+      background:linear-gradient(90deg, rgba(0,255,204,0), #00ffcc, rgba(0,255,204,0));
+      filter:drop-shadow(0 0 8px #00ffcc);
+    }
+    .podium{
+      display:grid; grid-template-columns: 1fr 1.3fr 1fr; gap:16px; align-items:stretch;
+    }
+    .card{
+      background:#111; border-radius:18px; padding:18px 16px; text-align:center;
+      border:2px solid rgba(255,255,255,.06);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 10px 28px rgba(0,0,0,.4);
+      position:relative; overflow:hidden;
+    }
+    .card:before{
+      content:""; position:absolute; inset:-120% -40%; transform:rotate(18deg);
+      background:linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.33) 50%, rgba(255,255,255,0) 100%);
+      animation: shine 4.6s linear infinite;
+      pointer-events:none; mix-blend-mode:overlay;
+    }
+    @keyframes shine{
+      from{ transform:translateX(-30%) rotate(18deg); }
+      to  { transform:translateX(30%)  rotate(18deg); }
+    }
+
+    .rank-badge{
+      display:inline-flex; align-items:center; gap:10px; padding:8px 14px; border-radius:999px; font-weight:900; color:#111;
+      background:#ccc; font-size:clamp(18px, 3.2vw, 30px);
+      box-shadow:0 6px 16px rgba(0,0,0,.35);
+    }
+    .rank-1 .rank-badge{ background:linear-gradient(145deg,#ffd700,#ffef9b); }
+    .rank-2 .rank-badge{ background:linear-gradient(145deg,#d9d9d9,#ffffff); }
+    .rank-3 .rank-badge{ background:linear-gradient(145deg,#cd7f32,#f0b07a); }
+
+    .school{
+      margin:12px 0 10px; font-size:clamp(22px, 3.8vw, 40px); font-weight:900; color:#fff;
+      text-shadow:0 3px 0 rgba(0,0,0,.45), 0 8px 26px rgba(255,215,0,.25);
+      letter-spacing:.5px;
+    }
+    .pairs{
+      display:grid; grid-template-columns: 1fr; gap:8px; margin:10px 0 12px;
+    }
+    .pill{
+      background:#151515; border:1px solid #2a2a2a; border-radius:12px; padding:10px 12px; color:#eaeaea;
+      white-space:normal; word-break:break-word; font-size:clamp(16px, 2.6vw, 22px);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.04);
+    }
+    .metrics{
+      display:flex; justify-content:center; gap:18px; margin-top:8px; font-weight:900;
+    }
+    .metric{
+      background:#0f1e1e; border:1px solid #1f3b3b; padding:8px 12px; border-radius:10px; color:#8cf7e0;
+      font-size:clamp(16px, 2.4vw, 22px); box-shadow:0 6px 16px rgba(0,0,0,.25);
+    }
+    .rank-1{
+      transform:translateY(-8px);
+      border-color:rgba(255,215,0,.38);
+      box-shadow:
+        0 14px 30px rgba(255,215,0,.15),
+        0 0 42px rgba(255,215,0,.25),
+        inset 0 0 22px rgba(255,215,0,.18);
+      animation: crownPulse 2.4s ease-in-out infinite;
+    }
+    @keyframes crownPulse{
+      0%,100%{ box-shadow:0 12px 28px rgba(255,215,0,.12), 0 0 30px rgba(255,215,0,.18), inset 0 0 18px rgba(255,215,0,.14); }
+      50%    { box-shadow:0 18px 36px rgba(255,215,0,.22), 0 0 52px rgba(255,215,0,.32), inset 0 0 26px rgba(255,215,0,.22); }
+    }
+
+    @media (max-width:900px){
+      .podium{ grid-template-columns: 1fr; }
+      .rank-1{ order:-1; }
+    }
+
+    .tap-hint{ text-align:center; font-size:.9em; opacity:.75; margin:6px 0 4px; }
+
+    @media (max-width:768px){
+      :root{
+        --font-header:1.32em;
+        --font-base:.76em;
+        --row-pad:5px 2px;
+        --banner-h:64px;
+      }
+      body{ overflow-x:hidden; }
+      #banner{ margin:8px auto 4px; max-width:100%; }
+      h1{ margin:4px 0 8px; }
+      .status{ position:static; justify-content:flex-end; margin:4px 8px 2px; }
+      .fixed-header table, table.live{ width:100%; table-layout:fixed; }
+      .fixed-header th{
+        padding:5px 2px;
+        white-space:normal;
+        overflow-wrap:anywhere;
+        word-break:break-word;
+        text-overflow:clip;
+      }
+      td{
+        padding:5px 2px;
+        white-space:normal;
+        overflow-wrap:anywhere;
+        word-break:break-word;
+        text-overflow:clip;
+      }
+      .scroll-viewport{
+        height:calc(100vh - 205px);
+        min-height:500px;
+      }
+      .toolbar{ margin:4px 0 66px; }
+      .controls{
+        bottom:4px;
+        gap:6px;
+        padding:4px 6px;
+        flex-wrap:wrap;
+      }
+      .btn{
+        padding:7px 10px;
+        font-size:.86em;
+        border-radius:7px;
+      }
+      .tap-hint{ font-size:.84em; }
+
+      /* Mobile column proportions for team rankings */
+      .fixed-header col:nth-child(1), table.live col:nth-child(1){ width:9% !important; }
+      .fixed-header col:nth-child(2), table.live col:nth-child(2){ width:23% !important; }
+      .fixed-header col:nth-child(3), table.live col:nth-child(3){ width:25% !important; }
+      .fixed-header col:nth-child(4), table.live col:nth-child(4){ width:25% !important; }
+      .fixed-header col:nth-child(5), table.live col:nth-child(5){ width:9% !important; }
+      .fixed-header col:nth-child(6), table.live col:nth-child(6){ width:9% !important; }
+
+      .podium{ grid-template-columns:1fr; gap:10px; }
+      .poster{ padding:14px 10px; margin:6px auto 12px; }
+      .metrics{ flex-wrap:wrap; gap:8px; }
+    }
+
+    @media (orientation: landscape) and (max-height:520px){
+      :root{
+        --font-header:1.22em;
+        --font-base:.80em;
+        --row-pad:5px 2px;
+        --banner-h:56px;
+      }
+      body{ overflow-x:hidden; }
+      #banner{ margin:5px auto 3px; }
+      h1{ margin:3px 0 6px; }
+      .status{ position:static; justify-content:flex-end; margin:3px 8px 2px; }
+      .fixed-header table, table.live{ width:100%; table-layout:fixed; }
+      .fixed-header th{
+        padding:5px 2px;
+        white-space:normal;
+        overflow-wrap:anywhere;
+        word-break:break-word;
+        text-overflow:clip;
+      }
+      td{
+        padding:5px 2px;
+        white-space:normal;
+        overflow-wrap:anywhere;
+        word-break:break-word;
+        text-overflow:clip;
+      }
+      .scroll-viewport{
+        height:calc(100vh - 165px);
+        min-height:250px;
+      }
+      .controls{
+        bottom:3px;
+        padding:3px 6px;
+        gap:6px;
+      }
+      .btn{
+        padding:6px 10px;
+        font-size:.82em;
+      }
+      .tap-hint{ font-size:.8em; margin:4px 0 2px; }
+      .toolbar{ margin:4px 0 58px; }
+    }
+
+
+    .home-btn{
+      position:fixed;
+      left:10px;
+      top:10px;
+      z-index:9999;
+      background:rgba(0,0,0,.72);
+      color:#00ffcc;
+      border:1px solid #00ffcc;
+      padding:6px 10px;
+      border-radius:8px;
+      font-size:14px;
+      font-weight:bold;
+      text-decoration:none;
+      cursor:pointer;
+      line-height:1.2;
+      box-shadow:0 2px 10px rgba(0,255,204,.18);
+    }
+
+    .home-btn:active{
+      transform:scale(.96);
+    }
+
+    @media (max-width:768px){
+      .home-btn{
+        left:8px;
+        top:8px;
+        font-size:13px;
+        padding:5px 9px;
+      }
+    }
+
+  </style>
+</head>
+<body>
+  <a class="home-btn" href="index.html">返回首页</a>
+  <div class="status"><div id="netDot" class="dot"></div><small id="statusText">连接中…</small></div>
+
+  <img id="banner" src="banner.png" alt="Banner" />
+  <h1>第二届“高校杯”团体成绩展示</h1>
+
+  <!-- 固定表头（滚动模式） -->
+  <div class="fixed-header" id="tableHeader">
+    <table>
+      <colgroup>
+        <col style="width:10%"><col style="width:22%"><col style="width:22%">
+        <col style="width:22%"><col style="width:12%"><col style="width:12%">
+      </colgroup>
+      <thead>
+      <tr>
+        <th>名次</th><th>校友会</th><th>第一对选手</th><th>第二对选手</th><th>局分累计</th><th>小分累计</th>
+      </tr>
+      </thead>
+    </table>
+  </div>
+
+  <!-- 海报模式 -->
+  <div id="posterWrap">
+    <canvas id="fxCanvas"></canvas>
+    <div class="poster">
+      <div class="poster-title">🏆 团体前三名 </div>
+      <div id="podium" class="podium"></div>
+    </div>
+  </div>
+
+  <!-- 滚动主体 -->
+  <div class="scroll-viewport" id="scrollView">
+    <div id="scroller" class="scroller">
+      <table class="live">
+        <colgroup>
+          <col style="width:10%"><col style="width:22%"><col style="width:22%">
+          <col style="width:22%"><col style="width:12%"><col style="width:12%">
+        </colgroup>
+        <tbody id="tbodyA"></tbody>
+      </table>
+      <table class="live">
+        <colgroup>
+          <col style="width:10%"><col style="width:22%"><col style="width:22%">
+          <col style="width:22%"><col style="width:12%"><col style="width:12%">
+        </colgroup>
+        <tbody id="tbodyB"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 底部固定控制条 -->
+  <div class="controls">
+    <button class="btn" id="btn-poster">前三名 </button>
+    <button class="btn" id="btn-all">显示全部</button>
+  </div>
+  <div class="tap-hint">显示全部时，点击屏幕一次：暂停 / 继续；双指可放大缩小</div>
+  <div class="toolbar"><span id="lastUpdate">上次更新：—</span></div>
+<script>
+    /* ===== 配置 ===== */
+    const API_URL = "https://script.google.com/macros/s/AKfycbz3PI3VZzvVnqhN5GMhk3InqCQWk4gZL2jBJN54spQnID9rUXHpGv_3WD6tTJa6ULg/exec";
+    const POLL_MS = 10000, FIRST_SCREEN_MS = 900;
+
+    /* ===== DOM ===== */
+    const scroller = document.getElementById('scroller');
+    const viewport = document.getElementById('scrollView');
+
+    function adjustViewportHeight(){
+      const vv = window.visualViewport;
+      const h = vv ? vv.height : window.innerHeight;
+      if (window.matchMedia("(orientation: landscape) and (max-height: 520px)").matches) {
+        viewport.style.height = Math.max(250, Math.floor(h - 165)) + "px";
+      } else if (window.matchMedia("(max-width: 768px)").matches) {
+        viewport.style.height = Math.max(420, Math.floor(h - 160)) + "px";
+      }
+    }
+    window.addEventListener('resize', adjustViewportHeight);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', adjustViewportHeight);
+    const tableHeader = document.getElementById('tableHeader');
+    const tbodyA = document.getElementById('tbodyA');
+    const tbodyB = document.getElementById('tbodyB');
+    const lastUpdateEl = document.getElementById('lastUpdate');
+    const netDot = document.getElementById('netDot');
+    const statusText = document.getElementById('statusText');
+
+    const btnPoster = document.getElementById('btn-poster');
+    const btnAll = document.getElementById('btn-all');
+
+    const posterWrap = document.getElementById('posterWrap');
+    const podium = document.getElementById('podium');
+    const fxCanvas = document.getElementById('fxCanvas');
+    const fxCtx = fxCanvas.getContext('2d');
+
+    let allRows = [];
+    let mode = 'all';          // 'all' | 'poster'
+    let displayPaused = false;
+    let pollTimer = null, autoStartTimer = null;
+    let particles = [];
+
+    const trim = v => (v==null ? "" : String(v).trim());
+    function ts(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
+    function setNet(ok,msg){ netDot.className='dot '+(ok?'ok':'err'); statusText.textContent = msg || (ok?'在线':'重试中…'); }
+
+    async function fetchJSON(u, tries=3, baseDelay=1200){
+      for(let i=0;i<tries;i++){
+        try{
+          const r = await fetch(u, {cache:'no-store'});
+          if(!r.ok) throw new Error(String(r.status));
+          setNet(true,'在线');
+          return await r.json();
+        }catch(e){
+          setNet(false, `重试 ${i+1}/${tries}`);
+          if(i===tries-1) throw e;
+          await new Promise(res=>setTimeout(res, baseDelay*(i+1)));
+        }
+      }
+    }
+
+ // FIX: 更稳健的表头识别，避免把“第一条数据”误判成表头
+function parsePayload(payload){
+  let rows = [];
+  if (payload && Array.isArray(payload.rows)) rows = payload.rows;
+  else if (payload && Array.isArray(payload.data)) rows = payload.data;
+  else if (Array.isArray(payload)) rows = payload;
+  else if (payload && Array.isArray(payload.table)) rows = payload.table;
+  else rows = [];
+
+  // 统一清洗
+  rows = rows.map(r => (Array.isArray(r) ? r.map(v => (v==null?'':String(v).trim())) : []));
+  while (rows.length && rows[0].every(c => c === '')) rows.shift();
+  if (!rows.length) return { header:[], data:[] };
+
+  const first = rows[0];
+
+  // 只在“单元格值等于以下标题之一”时计为命中（而不是包含子串）
+  const headerTokens = [
+    '名次','校友会','第一对选手','第二对选手','局分累计','小分累计',
+    'rank','school',"first player's id","first player's name",
+    "second player's id","second player's name",'sumr','total_score'
+  ].map(s=>s.toLowerCase());
+
+  const hits = first.reduce((n,cell)=>{
+    const s = String(cell||'').toLowerCase();
+    return n + (headerTokens.includes(s) ? 1 : 0);
+  }, 0);
+
+  // 若多数为数字，就不当表头
+  const numericCount = first.filter(c => /^-?\d+(\.\d+)?$/.test(c)).length;
+  const mostlyNumeric = numericCount >= Math.max(1, Math.floor(first.length * 0.6));
+
+  const treatAsHeader = (hits >= 2) && !mostlyNumeric;
+
+  return treatAsHeader ? { header:first, data: rows.slice(1) } : { header:[], data: rows };
+}  
+
+
+    function buildColumnIndex(header){
+      const lc = header.map(h => h.toLowerCase());
+      const find = (keys, fb)=>{ for(const k of keys){ const i=lc.findIndex(h=>h.includes(k)); if(i>=0) return i; } return fb; };
+      return {
+        rank:   find(['名次','rank'], 7),
+        school: find(['校友会','school','队名'], 0),
+        p1:     find(['第一对选手','pair1','p1'], 2),
+        p2:     find(['第二对选手','pair2','p2'], 4),
+        setSum: find(['局分累','set','局分'], 5),
+        smSum:  find(['小分累','point','小分'], 6),
+      };
+    }
+
+    function mapRows(data, col){
+      const out = data.map(r => ({
+        rank: Number(r[col.rank]),
+        school: r[col.school],
+        p1: r[col.p1],
+        p2: r[col.p2],
+        setSum: r[col.setSum],
+        smSum: r[col.smSum]
+      }));
+      if (out.some(o => !Number.isFinite(o.rank))){
+        out.sort((a,b)=>{
+          const sa=+a.setSum||0, sb=+b.setSum||0;
+          const pa=+a.smSum||0, pb=+b.smSum||0;
+          if (sb!==sa) return sb-sa;
+          if (pb!==pa) return pb-pa;
+          return String(a.school).localeCompare(String(b.school),'zh');
+        });
+        out.forEach((o,i)=>o.rank=i+1);
+      }else{
+        out.sort((a,b)=>a.rank-b.rank);
+      }
+      return out;
+    }
+
+    /* ========== 表格渲染（滚动模式） ========== */
+    function trFor(row){
+      const tr = document.createElement('tr');
+      if (row.rank===1) tr.classList.add('top-1');
+      else if (row.rank===2) tr.classList.add('top-2');
+      else if (row.rank===3) tr.classList.add('top-3');
+      [row.rank,row.school,row.p1,row.p2,row.setSum,row.smSum].forEach((v)=>{
+        const td=document.createElement('td'); td.textContent=(v==null||v==='')?'—':String(v); tr.appendChild(td);
+      });
+      return tr;
+    }
+    function fillAndMirror(){
+      tbodyB.innerHTML=''; Array.from(tbodyA.children).forEach(tr=>tbodyB.appendChild(tr.cloneNode(true)));
+      let guard=0;
+      while(tbodyA.offsetHeight<viewport.clientHeight && guard<6){
+        const clones=Array.from(tbodyA.children).map(tr=>tr.cloneNode(true));
+        clones.forEach(n=>tbodyA.appendChild(n)); guard++;
+        tbodyB.innerHTML=''; Array.from(tbodyA.children).forEach(tr=>tbodyB.appendChild(tr.cloneNode(true)));
+      }
+    }
+    function renderTable(){
+      const rows = allRows;
+      tbodyA.innerHTML=''; rows.forEach(r=>tbodyA.appendChild(trFor(r)));
+      fillAndMirror();
+      const doubled = Math.max(1, rows.length*2);
+      const per = 0.8;
+      const duration = Math.max(30, Math.round(doubled*per));
+      scroller.style.setProperty('--duration-sec', duration+'s');
+      scroller.style.transform='translateY(0)';
+      scroller.style.animationPlayState='paused';
+      if (autoStartTimer) clearTimeout(autoStartTimer);
+      autoStartTimer=setTimeout(()=>{ if(!displayPaused && mode==='all') scroller.style.animationPlayState='running'; }, FIRST_SCREEN_MS);
+    }
+
+    /* ========== 海报渲染（前三名） ========== */
+    function posterCard(o, rank){
+      const wrap=document.createElement('div');
+      wrap.className='card rank-'+rank;
+      const emoji = rank===1?'🏆':(rank===2?'🥈':'🥉');
+      const crown = rank===1?' 👑':'';
+      wrap.innerHTML = `
+        <div class="rank-badge">${emoji} 第 ${o.rank} 名</div>
+        <div class="school">${o.school}${crown}</div>
+        <div class="pairs">
+          <div class="pill">第一对：${o.p1||'—'}</div>
+          <div class="pill">第二对：${o.p2||'—'}</div>
+        </div>
+        <div class="metrics">
+          <div class="metric">局分：${o.setSum||'—'}</div>
+          <div class="metric">小分：${o.smSum||'—'}</div>
+        </div>
+      `;
+      return wrap;
+    }
+    function renderPoster(){
+      const t3 = allRows.slice(0,3);
+      podium.innerHTML='';
+      if (t3.length<3){ podium.innerHTML='<div style="text-align:center;opacity:.8">数据不足，无法生成前三名</div>'; return; }
+      podium.appendChild(posterCard(t3[1],2));
+      podium.appendChild(posterCard(t3[0],1));
+      podium.appendChild(posterCard(t3[2],3));
+      resizeFxCanvas(); startParticles();
+    }
+
+    /* ========== 拉新 & 切换 ========== */
+    async function loadData(){
+      const payload = await fetchJSON(API_URL);
+      const parsed = parsePayload(payload);
+      const col = buildColumnIndex(parsed.header);
+      allRows = mapRows(parsed.data, col);
+      if (mode==='poster'){ renderPoster(); } else { renderTable(); }
+      lastUpdateEl.textContent = `上次更新：${ts()}`;
+    }
+
+    function startPolling(){
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer=setInterval(async()=>{ try{ await loadData(); setNet(true,'在线'); }catch(e){ setNet(false,'重试中…'); } }, POLL_MS);
+    }
+    function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+
+    function applyMode(){
+      if (mode==='poster'){
+        posterWrap.style.display='block';
+        tableHeader.style.display='none';
+        viewport.style.display='none';
+        scroller.style.animationPlayState='paused';
+        renderPoster();
+      }else{
+        stopParticles();
+        posterWrap.style.display='none';
+        tableHeader.style.display='block';
+        viewport.style.display='block';
+        if (!displayPaused) scroller.style.animationPlayState='running';
+        renderTable();
+      }
+    }
+
+    btnPoster.addEventListener('click', ()=>{ mode='poster'; applyMode(); });
+    btnAll.addEventListener('click', ()=>{ mode='all'; applyMode(); });
+
+    function setDisplayPaused(p){
+      displayPaused=p;
+      if (mode==='all'){
+        scroller.style.animationPlayState = p ? 'paused' : 'running';
+      }else{
+        scroller.style.animationPlayState = 'paused';
+      }
+      // 手机版：点击只暂停/恢复滚动，不停止后台数据刷新。
+      if (!pollTimer) startPolling();
+      if (!p) loadData().catch(()=>{});
+    }
+
+    // 手机/平板：显示全部时，点击屏幕一次暂停/继续；双指缩放和轻微滑动不触发。
+    function initTapScrollControl(){
+      let tapStart = null;
+
+      document.addEventListener('pointerdown', (e)=>{
+        if (mode !== 'all') return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (e.target.closest('button, audio, a, input, select, textarea')) return;
+        tapStart = { x:e.clientX, y:e.clientY, t:Date.now(), pointerId:e.pointerId };
+      }, { passive:true });
+
+      document.addEventListener('pointerup', (e)=>{
+        if (mode !== 'all') { tapStart = null; return; }
+        if (!tapStart || tapStart.pointerId !== e.pointerId) return;
+        if (e.target.closest('button, audio, a, input, select, textarea')) { tapStart = null; return; }
+
+        const dx = Math.abs(e.clientX - tapStart.x);
+        const dy = Math.abs(e.clientY - tapStart.y);
+        const dt = Date.now() - tapStart.t;
+        tapStart = null;
+
+        if (dx < 12 && dy < 12 && dt < 600) {
+          setDisplayPaused(!displayPaused);
+        }
+      }, { passive:true });
+
+      window.addEventListener('keydown', e=>{
+        if(e.code==='Space'){
+          e.preventDefault();
+          setDisplayPaused(!displayPaused);
+        }
+      });
+    }
+
+    /* ===== 简易粒子特效（海报模式） ===== */
+    function resizeFxCanvas(){
+      const r = posterWrap.getBoundingClientRect();
+      fxCanvas.width = Math.floor(r.width);
+      fxCanvas.height = Math.floor(r.height);
+    }
+    window.addEventListener('resize', ()=>{ if(mode==='poster') resizeFxCanvas(); });
+
+    function startParticles(){
+      particles = [];
+      for(let i=0;i<70;i++){
+        particles.push({
+          x: Math.random()*fxCanvas.width,
+          y: Math.random()*fxCanvas.height,
+          vx: (Math.random()-.5)*0.3,
+          vy: - (0.4+Math.random()*0.6),
+          r: 1 + Math.random()*2.2,
+          a: .6 + Math.random()*.4,
+          hue: 40 + Math.random()*60
+        });
+      }
+      if (!fxLoop) fxLoop = requestAnimationFrame(tick);
+    }
+    function stopParticles(){
+      if (fxLoop){ cancelAnimationFrame(fxLoop); fxLoop=null; }
+      particles.length=0;
+      fxCtx.clearRect(0,0,fxCanvas.width,fxCanvas.height);
+    }
+    let fxLoop=null;
+    function tick(){
+      fxCtx.clearRect(0,0,fxCanvas.width,fxCanvas.height);
+      const g = fxCtx.createRadialGradient(fxCanvas.width/2, fxCanvas.height*0.1, 20, fxCanvas.width/2, fxCanvas.height*0.1, fxCanvas.width);
+      g.addColorStop(0, 'rgba(255,230,120,0.10)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      fxCtx.fillStyle = g; fxCtx.fillRect(0,0,fxCanvas.width,fxCanvas.height);
+
+      particles.forEach(p=>{
+        p.x += p.vx; p.y += p.vy; p.a -= 0.0025;
+        if (p.y < -10 || p.a<=0){
+          p.x = Math.random()*fxCanvas.width;
+          p.y = fxCanvas.height + Math.random()*20;
+          p.vx = (Math.random()-.5)*0.3;
+          p.vy = - (0.4+Math.random()*0.6);
+          p.r  = 1 + Math.random()*2.2;
+          p.a  = .6 + Math.random()*.4;
+          p.hue= 40 + Math.random()*60;
+        }
+        fxCtx.beginPath();
+        fxCtx.fillStyle = `hsla(${p.hue}, 90%, 65%, ${p.a})`;
+        fxCtx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        fxCtx.fill();
+      });
+      fxLoop = requestAnimationFrame(tick);
+    }
+
+    /* ===== 启动 ===== */
+    (async ()=>{
+      adjustViewportHeight();
+      try{ await loadData(); setNet(true,'在线'); } catch(e){ setNet(false,'初次加载失败'); }
+      initTapScrollControl();
+      startPolling();
+      mode='all'; applyMode();
+      setTimeout(()=>{ if(!displayPaused && mode==='all') scroller.style.animationPlayState='running'; }, FIRST_SCREEN_MS);
+    })();
+  </script>
+</body>
+</html>
