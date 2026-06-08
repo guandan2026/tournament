@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>第三届“高校杯”团体成绩展示</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+  <style>
+    :root{
+      --font-header: clamp(20px, 3.6vw, 32px);
+      --font-base: clamp(14px, 2.6vw, 18px);
+      --row-pad: 8px;
+      --banner-h: 120px;
+    }
+    *{ box-sizing:border-box; }
+    html{ touch-action:auto; }
+    body{
+      margin:0;
+      background:#000;
+      color:#fff;
+      font-family:Arial, sans-serif;
+      overflow-x:hidden;
+      -webkit-text-size-adjust:100%;
+    }
+    #banner{
+      display:block;
+      margin:12px auto 6px;
+      height:var(--banner-h);
+      max-width:100%;
+      object-fit:contain;
+    }
+    h1{
+      text-align:center;
+      color:#00ffcc;
+      font-size:var(--font-header);
+      margin:6px 0 10px;
+      text-shadow:0 4px 18px rgba(0,255,204,.25);
+    }
+
+    .fixed-header{ display:block; }
+    .fixed-header table{
+      width:100%;
+      table-layout:fixed;
+      border-collapse:collapse;
+      font-size:var(--font-base);
+    }
+    .fixed-header th{
+      padding:var(--row-pad);
+      background:#333;
+      border-bottom:2px solid #00ffcc;
+      text-align:center;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .empty-wrap{
+      min-height:calc(100vh - 240px);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:28px 16px 40px;
+    }
+    .empty-card{
+      width:min(720px, 92vw);
+      text-align:center;
+      padding:30px 18px 28px;
+      background:
+        radial-gradient(650px 240px at 50% -50%, rgba(0,255,204,.14), rgba(0,0,0,0)),
+        #0a0a0a;
+      border:1px solid rgba(0,255,204,.25);
+      border-radius:18px;
+      box-shadow:0 12px 32px rgba(0,0,0,.55), inset 0 0 30px rgba(0,255,204,.04);
+    }
+    .empty-icon{
+      font-size:clamp(36px, 10vw, 64px);
+      margin-bottom:12px;
+      filter:drop-shadow(0 0 14px rgba(0,255,204,.25));
+    }
+    .empty-title{
+      color:#00ffcc;
+      font-size:clamp(22px, 5vw, 34px);
+      font-weight:900;
+      margin:8px 0 10px;
+      letter-spacing:.5px;
+    }
+    .empty-subtitle{
+      color:#d7fff7;
+      opacity:.9;
+      font-size:clamp(15px, 3.4vw, 20px);
+      line-height:1.65;
+      margin:0 auto 22px;
+      max-width:580px;
+    }
+    .home-main-btn{
+      display:inline-block;
+      background:#004a4a;
+      color:#fff;
+      border:1px solid #00ffcc;
+      padding:11px 22px;
+      border-radius:10px;
+      font-size:clamp(16px, 3.8vw, 20px);
+      font-weight:bold;
+      text-decoration:none;
+      box-shadow:0 4px 18px rgba(0,255,204,.18);
+    }
+    .home-main-btn:active{
+      transform:scale(.97);
+    }
+
+    @media (max-width:768px){
+      :root{
+        --font-header:1.32em;
+        --font-base:.76em;
+        --row-pad:5px 2px;
+        --banner-h:64px;
+      }
+      #banner{ margin:8px auto 4px; }
+      h1{ margin:4px 0 8px; }
+      .fixed-header table{ width:100%; table-layout:fixed; }
+      .fixed-header th{
+        padding:5px 2px;
+        white-space:normal;
+        overflow-wrap:anywhere;
+        word-break:break-word;
+        text-overflow:clip;
+      }
+      .fixed-header col:nth-child(1){ width:9% !important; }
+      .fixed-header col:nth-child(2){ width:23% !important; }
+      .fixed-header col:nth-child(3){ width:25% !important; }
+      .fixed-header col:nth-child(4){ width:25% !important; }
+      .fixed-header col:nth-child(5){ width:9% !important; }
+      .fixed-header col:nth-child(6){ width:9% !important; }
+      .empty-wrap{
+        min-height:calc(100vh - 165px);
+        padding:22px 12px 32px;
+      }
+      .empty-card{
+        padding:26px 14px 24px;
+      }
+    }
+
+    @media (orientation: landscape) and (max-height:520px){
+      :root{
+        --font-header:1.22em;
+        --font-base:.80em;
+        --row-pad:5px 2px;
+        --banner-h:56px;
+      }
+      #banner{ margin:5px auto 3px; }
+      h1{ margin:3px 0 6px; }
+      .fixed-header th{
+        padding:5px 2px;
+        white-space:normal;
+        overflow-wrap:anywhere;
+        word-break:break-word;
+        text-overflow:clip;
+      }
+      .empty-wrap{
+        min-height:calc(100vh - 150px);
+        padding:14px 10px 22px;
+      }
+      .empty-card{
+        padding:18px 14px 16px;
+      }
+      .empty-icon{ font-size:34px; margin-bottom:6px; }
+      .empty-title{ margin:4px 0 6px; }
+      .empty-subtitle{ margin-bottom:12px; line-height:1.45; }
+    }
+  </style>
+</head>
+<body>
+  <img id="banner" src="banner.png" alt="Banner" />
+  <h1>第三届“高校杯”团体成绩展示</h1>
+
+  <!-- 固定表头：保留正式页面的表头，但不显示任何成绩数据 -->
+  <div class="fixed-header" id="tableHeader">
+    <table>
+      <colgroup>
+        <col style="width:10%"><col style="width:22%"><col style="width:22%">
+        <col style="width:22%"><col style="width:12%"><col style="width:12%">
+      </colgroup>
+      <thead>
+      <tr>
+        <th>名次</th><th>校友会</th><th>第一对选手</th><th>第二对选手</th><th>局分累计</th><th>小分累计</th>
+      </tr>
+      </thead>
+    </table>
+  </div>
+
+  <main class="empty-wrap">
+    <section class="empty-card" aria-label="团体成绩暂未公布">
+      <div class="empty-icon">⏳</div>
+      <div class="empty-title">比赛尚未结束 / 数据处理中</div>
+      <p class="empty-subtitle">
+        团体成绩尚未正式公布。请等待赛事组委会确认后再查看最终结果。
+      </p>
+      <a class="home-main-btn" href="index.html">返回主页</a>
+    </section>
+  </main>
+</body>
+</html>
