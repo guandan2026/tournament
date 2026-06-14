@@ -2,19 +2,101 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <title> 第三届高校杯 展示页面导航</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>高校杯掼蛋 手机展示导航</title>
+
   <style>
-    body { font-family: Arial; background: #111; color: white; text-align: center; padding-top: 150px; }
-    a { display: block; margin: 150px; font-size: 2.5em; color: #00ffff; text-decoration: none; }
-    a:hover { color: #ffcc00; }
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      background: #111;
+      color: white;
+      text-align: center;
+    }
+
+    .page {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 60px 22px 40px;
+    }
+
+    h1 {
+      font-size: 2.2em;
+      margin-bottom: 12px;
+      color: #ffffff;
+    }
+
+    .subtitle {
+      font-size: 1.1em;
+      color: #bbbbbb;
+      margin-bottom: 48px;
+    }
+
+    a {
+      display: block;
+      margin: 24px auto;
+      padding: 24px 18px;
+      max-width: 560px;
+      font-size: 2em;
+      font-weight: bold;
+      color: #00ffff;
+      text-decoration: none;
+      border: 2px solid #00ffff;
+      border-radius: 18px;
+      background: rgba(0, 255, 255, 0.08);
+    }
+
+    a:hover,
+    a:active {
+      color: #ffcc00;
+      border-color: #ffcc00;
+      background: rgba(255, 204, 0, 0.12);
+    }
+
+    .note {
+      margin-top: 46px;
+      font-size: 0.95em;
+      color: #888888;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 480px) {
+      .page {
+        padding-top: 42px;
+      }
+
+      h1 {
+        font-size: 1.8em;
+      }
+
+      .subtitle {
+        font-size: 1em;
+        margin-bottom: 34px;
+      }
+
+      a {
+        font-size: 1.45em;
+        padding: 22px 12px;
+        margin: 20px auto;
+      }
+    }
   </style>
 </head>
+
 <body>
-  <h1>第三届高校杯 展示页面</h1>
-  
-   <a href="ResultsInput_mobile_static_manual_scroll_home.html">📋 本轮比赛结果展示</a>
-  <a href="MatchUps_mobile_static_manual_scroll_home.html">🆚 下一轮对阵信息展示</a>
-  <a href="TeamRankings_empty.html">📊 团体成绩排行榜</a> 
-  <a href="IndividualRankings_empty.html">👤 个人成绩排行榜</a> 
+  <div class="page">
+    <h1> 2026 第三届高校杯</h1>
+    <div class="subtitle">手机端查询入口</div>
+
+    <a href="ResultsInput_mobile_static_manual_scroll_home.html">📋 查看本轮成绩</a>
+    <a href="MatchUps_mobile_static_manual_scroll_home.html">🆚 查看下一轮对阵</a>
+    <a href="IndividualRankings_empty.html">🏆 查看个人排名</a>
+    <a href="TeamRankings_empty.html">🎓 查看团体排名</a>
+
+    <div class="note">
+      请根据比赛现场通知刷新页面。<br>
+      2026 高校杯掼蛋比赛 · Mobile Display System
+    </div>
+  </div>
 </body>
 </html>
