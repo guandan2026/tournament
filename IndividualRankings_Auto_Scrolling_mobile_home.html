@@ -456,23 +456,101 @@
       return false;
     }
 
+
+
+
+
+
+
+
+
+
     function parsePayload(payload){
-      let rows = [];
-      if (payload && Array.isArray(payload.rows)) rows = payload.rows;
-      else if (payload && Array.isArray(payload.data)) rows = payload.data;
-      else if (Array.isArray(payload)) rows = payload;
-      else if (payload && Array.isArray(payload.table)) rows = payload.table;
-      else rows = [];
-      rows = rows.map(r => (Array.isArray(r) ? r.map(trim) : []));
-      while (rows.length && rows[0].every(c => c === '')) rows.shift();
-      if (!rows.length) return { header:[], data:[] };
+  let rows = [];
+  let header = [];
 
-      const noHeaderParam = url.searchParams.get('noHeader'); // 支持 ?noHeader=1 强制无表头
-      if (noHeaderParam === '1') return { header:[], data:rows };
+  // 当前个人排名 API 的标准格式：
+  // { header: [...], rows: [...] }
+  if (payload && Array.isArray(payload.rows)) {
+    rows = payload.rows;
 
-      const hasHeader = looksLikeHeader_(rows[0], rows[1]);
-      return hasHeader ? { header: rows[0], data: rows.slice(1) } : { header: [], data: rows };
+    if (Array.isArray(payload.header)) {
+      header = payload.header.map(trim);
     }
+  }
+  else if (payload && Array.isArray(payload.data)) {
+    rows = payload.data;
+  }
+  else if (Array.isArray(payload)) {
+    rows = payload;
+  }
+  else if (payload && Array.isArray(payload.table)) {
+    rows = payload.table;
+  }
+
+  rows = rows.map(r =>
+    Array.isArray(r) ? r.map(trim) : []
+  );
+
+  while (
+    rows.length &&
+    rows[0].every(c => c === '')
+  ) {
+    rows.shift();
+  }
+
+  if (!rows.length) {
+    return {
+      header: header,
+      data: []
+    };
+  }
+
+  // API 已经单独提供表头，直接使用
+  if (header.length) {
+    return {
+      header: header,
+      data: rows
+    };
+  }
+
+  // 以下保留为其他数据格式的兼容方案
+  const noHeaderParam =
+    url.searchParams.get('noHeader');
+
+  if (noHeaderParam === '1') {
+    return {
+      header: [],
+      data: rows
+    };
+  }
+
+  const hasHeader =
+    looksLikeHeader_(rows[0], rows[1]);
+
+  return hasHeader
+    ? {
+        header: rows[0],
+        data: rows.slice(1)
+      }
+    : {
+        header: [],
+        data: rows
+      };
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /* 列定位（大小写/关键词容错）；若无表头，用后备索引 + 智能猜学校列 */
     function buildColumnIndex(header, rows){
